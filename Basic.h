@@ -8,6 +8,13 @@
 #include<mutex>
 using namespace std;
 
+// 五种进程状态
+#define PRO_NEW 1
+#define PRO_READY 2
+#define PRO_RUNNING 3
+#define PRO_WAITING 4
+#define PRO_TERMINATED 5
+
 /*
 1. 主线程执行流程应当为：从就绪队列调入进程PCB到CPU类，调用取指函数IF
    如果取指返回的结果是“NULL”，引发缺页中断，进程进入阻塞
@@ -49,10 +56,10 @@ class PCB //PCB相当于就是一个进程类
 {
 public:
 	string PID; //这里没有想好到底怎么分配PID，要不按照创建时间分配？
-	int priority = priority;
+	int priority;
 	int WaitingTime;
 	int RunTime;
-	int status = 0;  //进程所处的状态
+	int status;  //进程所处的状态
 
 
 	// 逻辑地址，记录下一条要执行的指令的虚拟地址
@@ -62,7 +69,7 @@ public:
 	// 设备，记录当前进程在申请的设备信息
 	vector<EquipInfo> Equipnum; // 记录申请的设备的编号
 
-	PCB(int priority);
+	PCB(string PID, int priority);
 
 	~PCB(); // 析构函数，用于进程结束的时候释放进程
 
