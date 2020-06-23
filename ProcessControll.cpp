@@ -1,21 +1,56 @@
 ﻿#include "Basic.h"
 
-PCB::PCB(string PID, int priority)
+PCB::PCB(int PID, int priority, int pageNo)
 {
 	this->PID = PID;
-	this->PageIndex = 0;
-	this->PageNumber = 0;
-	this->WaitingTime = 0;
 	this->priority = priority;
+	this->WaitingTime = 0;
 	this->RunTime = 0;
-	this->status = PRO_NEW;
+
+	this->pageNo = pageNo;
+	this->pageId = 0;
+	this->offset = 0;
 	//调用内存提供的接口，获取分配的虚拟地址
 }
 
-string CPUSimulate::IF()
+int CPUSimulate::getPID(void) {  // 获取10000以内不重复的整数作为PID
+	srand((unsigned)time(0));
+	int pid;
+	vector<int>::iterator ret;
+	do {
+		pid = rand() % 10000;  // 最多开10000个进程
+		ret = find(this->used_pid.begin(), this->used_pid.end(), pid);
+	} while (ret != this->used_pid.end());
+	this->used_pid.push_back(pid);
+	return pid;
+}
+
+void CPUSimulate::initProcess(string filename) {
+	int PID = CPUSimulate::getPID();
+	int pageNo = Memory::reqSpace(DEFAULT_BLOCK, PID, filename);
+	PCB process = PCB(PID, 1, pageNo);
+	this->READY.push_back(process);
+}
+
+string CPUSimulate::IF(PCB process)
 {
-	string order = "test";  //这里调用内存提供的接口来获取指令
-	this->order = order;
+	//string order = "test";  //这里调用内存提供的接口来获取指令
+	//this->order = order;
+	//return this->order;
+
+	// 读指令
+	string command = Memory::viewMemory(process.pageNo, process.pageId, process.offset, process.PID);
+	
+	if (command == "") {  // 缺页中断
+
+	}
+	else if (command == "wrong") {  // 出现错误
+
+	}
+	else
+	{
+
+	}
 }
 
 void CPUSimulate::SplitString(const string& s, vector<string>& v, const string& c)
@@ -131,25 +166,29 @@ int CPUSimulate::ID()
 		case 'Q':
 			return 0;
 
+		default:
+			return 0;
+
 		}
+
 	}
 
 }
 
 void CPUSimulate::interrupt(PCB process)
 {
-	this->interptLock.lock();
-	if (this->isFinish == true && this->RUNNING.size() == 0) //如果没有进程正在执行
-	{
-		this->RUNNING.push_back(process);
-		this->isFinish = false;
-	}
-	else //如果有，先放入中断向量表等待
-	{
-		this->Lock = true;
-		this->BREAK.push_back(process);
-	}
-	this->interptLock.unlock();
+	//this->interptLock.lock();
+	//if (this->isFinish == true && this->RUNNING.size() == 0) //如果没有进程正在执行
+	//{
+	//	this->RUNNING.push_back(process);
+	//	this->isFinish = false;
+	//}
+	//else //如果有，先放入中断向量表等待
+	//{
+	//	this->Lock = true;
+	//	this->BREAK.push_back(process);
+	//}
+	//this->interptLock.unlock();
 }
 
 void CPUSimulate::run(int time, char type) //这里暂时没想好
@@ -160,4 +199,8 @@ void CPUSimulate::run(int time, char type) //这里暂时没想好
 		time--;
 	}
 
+}
+
+int main(void) {
+	cout << "hello world!" << endl;
 }

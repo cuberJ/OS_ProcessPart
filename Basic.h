@@ -6,6 +6,9 @@
 #include<algorithm>
 #include<thread>
 #include<mutex>
+#include <cstdlib>
+#include <condition_variable>
+
 using namespace std;
 
 // 五种进程状态
@@ -14,6 +17,9 @@ using namespace std;
 #define PRO_RUNNING 3
 #define PRO_WAITING 4
 #define PRO_TERMINATED 5
+
+// 进程默认申请的内存块数
+#define DEFAULT_BLOCK 1
 
 /*
 1. 主线程执行流程应当为：从就绪队列调入进程PCB到CPU类，调用取指函数IF
@@ -43,6 +49,7 @@ using namespace std;
 	 */	 
 
 int CLOCK = 0;  // 总时钟
+std::mutex mutex;//多线程标准输出同步锁
 
 struct EquipInfo //外设信息
 {
@@ -51,25 +58,35 @@ struct EquipInfo //外设信息
 	int EquipType; // 设备种类
 };
 
+struct ItemRepository
+{
+	vector<PCB> itemBuffer; // 产品缓冲区
+	std::mutex mtx; // 互斥量,保护产品缓冲区
+	std::condition_variable repo_not_full; // 条件变量, 指示产品缓冲区不为满.
+	std::condition_variable repo_not_empty; // 条件变量, 指示产品缓冲区不为空.
+} gItemRepository; // 产品库全局变量, 生产者和消费者操作该变量.
+
+typedef struct ItemRepository ItemRepository;
+
 
 class PCB //PCB相当于就是一个进程类
 {
 public:
-	string PID; //这里没有想好到底怎么分配PID，要不按照创建时间分配？
+	int PID; //这里没有想好到底怎么分配PID，要不按照创建时间分配？
 	int priority;
 	int WaitingTime;
 	int RunTime;
-	int status;  //进程所处的状态
 
 
 	// 逻辑地址，记录下一条要执行的指令的虚拟地址
-	int PageNumber;  //虚拟页号
-	int PageIndex; //虚拟页内偏移量
+	int pageNo;  // 起始页号
+	int pageId;  // 页表项编号
+	int offset; // 虚拟页内偏移量
 
 	// 设备，记录当前进程在申请的设备信息
 	vector<EquipInfo> Equipnum; // 记录申请的设备的编号
 
-	PCB(string PID, int priority);
+	PCB(int PID, int priority, int pageNo);
 
 	~PCB(); // 析构函数，用于进程结束的时候释放进程
 
@@ -78,20 +95,34 @@ public:
 
 };
 
+ItemRepository lackpageList;  // 缺页中断队列
+ItemRepository getpageList;  // 调页完成队列
+ItemRepository seekMemList;  // 内存申请队列
+ItemRepository getMemList;  // 获得内存队列
+ItemRepository seekEquipList;  // 设备阻塞队列
+ItemRepository getEquipList;  // 获得设备队列
+ItemRepository seekFileList;  // 文件阻塞队列
+ItemRepository getFileList;  // 获得文件队列
+
 
 class CPUSimulate //模拟CPU运行
 {
 public:
 	bool isFinish = true; //标记当前执行的指令是否执行完毕
 	bool Lock = false; // 运行锁，当interrupt执行的时候将其锁住，禁止下一个指令进入
-	mutex interptLock; //中断使用的锁
+	std::mutex interptLock; //中断使用的锁
 	string order;  //IF段读取的指令，送入ID段分析
 	vector<PCB>READY;  //就绪队列
-	vector<PCB>BREAK;  // 中断队列
+	vector<PCB>BLOCK;  // 阻塞队列
 	vector<PCB>RUNNING; // 运行队列，其实每次只会有一个在运行，但这样方便调度
+	vector<int>used_pid;  // 记录已经使用过的pid
+	
+	
 	void SplitString(const string& s, vector<string>& v, const string& c);//分割字符串的函数
 
-	string IF();  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
+	void initProcess(string filename);  // 创建进程
+	int getPID(void);  // 分配PID
+	string IF(PCB process);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
 	void run(int time, char type); //输入指令运行的时间和种类,对于没有明确执行时间的指令，默认为1
 	int ID();  //分析指令
 	int Priority(PCB a, PCB b);  //比较两个进程的优先级，并对其进行调度
