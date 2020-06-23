@@ -8,6 +8,7 @@
 #include<mutex>
 #include <cstdlib>
 #include <condition_variable>
+#include<Windows.h>
 
 using namespace std;
 
@@ -20,6 +21,10 @@ using namespace std;
 
 // 进程默认申请的内存块数
 #define DEFAULT_BLOCK 1
+
+//文件申请是读还是写
+#define READ 0
+#define WRITE 1
 
 /*
 1. 主线程执行流程应当为：从就绪队列调入进程PCB到CPU类，调用取指函数IF
@@ -62,7 +67,16 @@ typedef struct FileInfo
 {
 	int fd;
 	string filename;
-};
+}FileInfo;
+
+typedef struct DemandInfo
+{
+	char type;  // 要申请的设备:K键盘/P打印机/D硬盘
+	int time;
+	int mode = 0;  // 0读1写
+	string filename;
+	int size = 0;
+}DemandInfo;
 
 struct ItemRepository
 {
@@ -90,8 +104,12 @@ public:
 	int offset; // 虚拟页内偏移量
 
 	// 设备，记录当前进程在申请的设备信息
-	vector<EquipInfo> Equipnum; // 记录申请的设备的编号
-	vector<FileInfo> openFileList;
+	vector<EquipInfo> Equipnum;  // 记录申请的设备的编号
+	vector<FileInfo> openFileList;  // 记录打开的文件
+
+	DemandInfo di;  // 申请设备时需要的信息
+	int MemDemand;  // 申请内存的大小
+
 
 	PCB(int PID, int priority, int pageNo);
 	PCB(void);
@@ -109,8 +127,6 @@ ItemRepository seekMemList;  // 内存申请队列
 ItemRepository getMemList;  // 获得内存队列
 ItemRepository seekEquipList;  // 设备阻塞队列
 ItemRepository getEquipList;  // 获得设备队列
-ItemRepository seekFileList;  // 文件阻塞队列
-ItemRepository getFileList;  // 获得文件队列
 
 
 class CPUSimulate //模拟CPU运行
@@ -133,16 +149,17 @@ public:
 
 	int getPID(void);  // 分配PID
 	string IF(PCB process);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
-	void run(int time, char type); //输入指令运行的时间和种类,对于没有明确执行时间的指令，默认为1
-	int ID();  //分析指令
+	void run(int time); // 供C指令调用的占用CPU函数
+	int ID(PCB process);  //分析指令
 	int Priority(PCB a, PCB b);  //比较两个进程的优先级，并对其进行调度
 	void ProcessSchedule();  //进程调度，现在的设想是插入排序，在插入的时候直接对优先级进行比较排序
 
 	void interrupt(PCB process);  //提供给外部设备以及内存的接口，输入中断的类型
-	int ReadApply(string Filename, int time, int size); // 读文件，读取指定文件名的文件
-	int WriteApply(string Filename, int time, int size); // 写文件
-	int MemApply(int size);  //内存申请，传入需要申请的内存的大小
-	int EquipApply(int time, char type); //用于进程申请设备
+	int ReadApply(string Filename, int time, PCB process); // 读文件，读取指定文件名的文件
+	int WriteApply(string Filename, int time, int size, PCB process); // 写文件
+	int MemApply(int size, PCB process);  //内存申请，传入需要申请的内存的大小
+	int EquipApply(int time, char type, PCB process); //用于进程申请设备
+	int PrintApply(string filename, int time, PCB process);  // 用于进程打印文件
 
 	int findProcess(int PID, vector<pair<int, PCB>> processList);  // 在某个队列中找到PCB下标
 };
