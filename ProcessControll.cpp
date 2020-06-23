@@ -13,6 +13,17 @@ PCB::PCB(int PID, int priority, int pageNo)
 	//调用内存提供的接口，获取分配的虚拟地址
 }
 
+PCB::PCB(void){}
+
+int CPUSimulate::findProcess(int PID, vector<pair<int, PCB>> processList) {
+	for (int i = 0; i < processList.size(); i++) {
+		if (processList[i].first == PID) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 int CPUSimulate::getPID(void) {  // 获取10000以内不重复的整数作为PID
 	srand((unsigned)time(0));
 	int pid;
@@ -25,11 +36,36 @@ int CPUSimulate::getPID(void) {  // 获取10000以内不重复的整数作为PID
 	return pid;
 }
 
-void CPUSimulate::initProcess(string filename) {
-	int PID = CPUSimulate::getPID();
-	int pageNo = Memory::reqSpace(DEFAULT_BLOCK, PID, filename);
-	PCB process = PCB(PID, 1, pageNo);
-	this->READY.push_back(process);
+void CPUSimulate::initProcess(string filename) {  // 创建进程
+	int PID = CPUSimulate::getPID();  // 获取PID
+	int pageNo = Memory::reqSpace(DEFAULT_BLOCK, PID, filename);  // 申请内存
+	PCB process = PCB(PID, 1, pageNo);  // 创建PCB
+	this->READY.push_back(make_pair(PID, process));  // 加入就绪队列
+}
+
+void CPUSimulate::blockProcess(ItemRepository* ir, PCB process) {  // 阻塞进程
+	std::unique_lock<std::mutex> lock(ir->mtx);  // 互斥访问
+	
+	int index = findProcess(process.PID, this->RUNNING);
+	this->RUNNING.erase(this->RUNNING.begin() + index);
+	(ir->itemBuffer).push_back(make_pair(process.PID, process));  // 写入加入阻塞队列
+	(ir->repo_not_empty).notify_all();  // 通知队列非空
+	lock.unlock();
+}
+
+void CPUSimulate::resumeProcess(ItemRepository* ir) {
+	std::unique_lock<std::mutex> lock(ir->mtx);
+
+
+	while (ir->itemBuffer.size() != 0)
+	{
+		this->READY.push_back(ir->itemBuffer[0]);
+		ir->itemBuffer.erase(ir->itemBuffer.begin());
+	}
+
+	(ir->repo_not_full).notify_all();
+	lock.unlock();
+
 }
 
 string CPUSimulate::IF(PCB process)
@@ -42,6 +78,7 @@ string CPUSimulate::IF(PCB process)
 	string command = Memory::viewMemory(process.pageNo, process.pageId, process.offset, process.PID);
 	
 	if (command == "") {  // 缺页中断
+		blockProcess(&lackpageList, process);
 
 	}
 	else if (command == "wrong") {  // 出现错误

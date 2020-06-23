@@ -58,9 +58,15 @@ struct EquipInfo //外设信息
 	int EquipType; // 设备种类
 };
 
+typedef struct FileInfo
+{
+	int fd;
+	string filename;
+};
+
 struct ItemRepository
 {
-	vector<PCB> itemBuffer; // 产品缓冲区
+	vector<pair<int, PCB>> itemBuffer; // 产品缓冲区
 	std::mutex mtx; // 互斥量,保护产品缓冲区
 	std::condition_variable repo_not_full; // 条件变量, 指示产品缓冲区不为满.
 	std::condition_variable repo_not_empty; // 条件变量, 指示产品缓冲区不为空.
@@ -85,8 +91,10 @@ public:
 
 	// 设备，记录当前进程在申请的设备信息
 	vector<EquipInfo> Equipnum; // 记录申请的设备的编号
+	vector<FileInfo> openFileList;
 
 	PCB(int PID, int priority, int pageNo);
+	PCB(void);
 
 	~PCB(); // 析构函数，用于进程结束的时候释放进程
 
@@ -112,15 +120,17 @@ public:
 	bool Lock = false; // 运行锁，当interrupt执行的时候将其锁住，禁止下一个指令进入
 	std::mutex interptLock; //中断使用的锁
 	string order;  //IF段读取的指令，送入ID段分析
-	vector<PCB>READY;  //就绪队列
-	vector<PCB>BLOCK;  // 阻塞队列
-	vector<PCB>RUNNING; // 运行队列，其实每次只会有一个在运行，但这样方便调度
+	vector<pair<int, PCB>>READY;  //就绪队列
+	vector<pair<int, PCB>>BLOCK;  // 阻塞队列
+	vector<pair<int, PCB>>RUNNING; // 运行队列，其实每次只会有一个在运行，但这样方便调度
 	vector<int>used_pid;  // 记录已经使用过的pid
 	
 	
 	void SplitString(const string& s, vector<string>& v, const string& c);//分割字符串的函数
-
 	void initProcess(string filename);  // 创建进程
+	void blockProcess(ItemRepository* ir, PCB process);  // 将中断的进程放入对应的阻塞队列中
+	void resumeProcess(ItemRepository* ir);  // 将中断完成的指令放回就绪队列中
+
 	int getPID(void);  // 分配PID
 	string IF(PCB process);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
 	void run(int time, char type); //输入指令运行的时间和种类,对于没有明确执行时间的指令，默认为1
@@ -133,6 +143,8 @@ public:
 	int WriteApply(string Filename, int time, int size); // 写文件
 	int MemApply(int size);  //内存申请，传入需要申请的内存的大小
 	int EquipApply(int time, char type); //用于进程申请设备
+
+	int findProcess(int PID, vector<pair<int, PCB>> processList);  // 在某个队列中找到PCB下标
 };
 
 
