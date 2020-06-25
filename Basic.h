@@ -26,6 +26,9 @@ using namespace std;
 #define READ 0
 #define WRITE 1
 
+// RUNNING队列中能够支持的最大并行数
+#define PRO_NUM 3
+
 /*
 1. 主线程执行流程应当为：从就绪队列调入进程PCB到CPU类，调用取指函数IF
    如果取指返回的结果是“NULL”，引发缺页中断，进程进入阻塞
@@ -69,7 +72,7 @@ typedef struct FileInfo
 	string filename;
 }FileInfo;
 
-typedef struct DemandInfo
+typedef struct DemandInfo // 申请的设备信息
 {
 	char type;  // 要申请的设备:K键盘/P打印机/D硬盘
 	int time;
@@ -78,7 +81,7 @@ typedef struct DemandInfo
 	int size = 0;
 }DemandInfo;
 
-struct ItemRepository
+struct ItemRepository //
 {
 	vector<pair<int, PCB>> itemBuffer; // 产品缓冲区
 	std::mutex mtx; // 互斥量,保护产品缓冲区
@@ -96,6 +99,7 @@ public:
 	int priority;
 	int WaitingTime;
 	int RunTime;
+	string order;
 
 
 	// 逻辑地址，记录下一条要执行的指令的虚拟地址
@@ -132,15 +136,15 @@ ItemRepository getEquipList;  // 获得设备队列
 class CPUSimulate //模拟CPU运行
 {
 public:
-	bool isFinish = true; //标记当前执行的指令是否执行完毕
-	bool Lock = false; // 运行锁，当interrupt执行的时候将其锁住，禁止下一个指令进入
+	bool Interpt = false;  // 记录是否发生了中断事件
 	std::mutex interptLock; //中断使用的锁
+	std::mutex readyLock; // 就绪队列使用的锁
 	string order;  //IF段读取的指令，送入ID段分析
 	vector<pair<int, PCB>>READY;  //就绪队列
-	vector<pair<int, PCB>>BLOCK;  // 阻塞队列
 	vector<pair<int, PCB>>RUNNING; // 运行队列，其实每次只会有一个在运行，但这样方便调度
 	vector<int>used_pid;  // 记录已经使用过的pid
-	
+	condition_variable Hearwait; //等待
+
 	
 	void SplitString(const string& s, vector<string>& v, const string& c);//分割字符串的函数
 	void initProcess(string filename);  // 创建进程
@@ -148,13 +152,13 @@ public:
 	void resumeProcess(ItemRepository* ir);  // 将中断完成的指令放回就绪队列中
 
 	int getPID(void);  // 分配PID
-	string IF(PCB process);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
-	void run(int time); // 供C指令调用的占用CPU函数
+	int IF(int pos);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
+	void CalTime(int time); // 供C指令调用的占用CPU函数
 	int ID(PCB process);  //分析指令
 	int Priority(PCB a, PCB b);  //比较两个进程的优先级，并对其进行调度
 	void ProcessSchedule();  //进程调度，现在的设想是插入排序，在插入的时候直接对优先级进行比较排序
 
-	void interrupt(PCB process);  //提供给外部设备以及内存的接口，输入中断的类型
+	void interrupt(ItemRepository *ir);  //提供给外部设备以及内存的接口，输入中断的类型
 	int ReadApply(string Filename, int time, PCB process); // 读文件，读取指定文件名的文件
 	int WriteApply(string Filename, int time, int size, PCB process); // 写文件
 	int MemApply(int size, PCB process);  //内存申请，传入需要申请的内存的大小
@@ -162,6 +166,9 @@ public:
 	int PrintApply(string filename, int time, PCB process);  // 用于进程打印文件
 
 	int findProcess(int PID, vector<pair<int, PCB>> processList);  // 在某个队列中找到PCB下标
+	void run(); // 将调入的进程按照指令去顺序执行
+	void RUN_PROCESS(int pos); //执行RUNNING队列中pos位置的进程
+	void Insert(PCB process); // 采用插入排列的方式，将就绪队列中的进程按照优先级从高到低排序
 };
 
 
