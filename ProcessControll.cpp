@@ -275,7 +275,7 @@ int CPUSimulate::ID(PCB process) // 返回0表示进程可以继续执行，不�
 void CPUSimulate::interrupt(ItemRepository *ir)
 {
 	std::unique_lock<std::mutex> run(this->interptLock);
-	ir->repo_not_full.wait(run);
+	ir->repo_not_empty.wait(run);
 
 	std::unique_lock<std::mutex> ready(readyLock);
 	this->resumeProcess(ir);
@@ -299,19 +299,21 @@ void CPUSimulate::CalTime(int time)  // 利用现实时间模拟对CPU的占用
 
 void CPUSimulate::run() // 运行函数
 {
-	// 3个监听队列的进程，依次分别监听：缺页中断，内存，设备
+	// 4个监听队列的进程，依次分别监听：缺页中断，内存，设备,以及设备的中断队列
 	thread HearingPage(&interrupt, getpageList);
 	thread HearingMem(&interrupt, getMemList);
 	thread HearingEquip(&interrupt, getEquipList);
+	thread HearingBreak(&BreakListen, breakList);
 	HearingPage.join();
 	HearingMem.join();
 	HearingEquip.join();
+	HearingBreak.join();
 
 	//开始持续运行进程部分
 	while (true)
 	{
 
-		// ---------------------这里补充：调度模块向RUNNING中放入进程---------------------------
+		// ---------------------这里补充：调度模块向RUNNING中放入进程，注意处理一下这种情况：就绪队列和运行队列都是空的时候，需要等待---------------------------
 		
 		for (int i = 0;!RUNNING.empty() ; i = (i+1)%RUNNING.size())  // RUNNING队列中有最多三个进程，每个进程循环执行两个指令
 		{
@@ -363,6 +365,41 @@ void CPUSimulate::Insert(PCB process)
 		}
 	}
 	READY.push_back(make_pair(process.PID, process));
+}
+
+
+void CPUSimulate::BreakListen(BreakRepository *breakList)
+{
+	while (true)
+	{
+		std::unique_lock<std::mutex> lock(breakList->BreakLock);
+		breakList->repo_not_empty.wait(lock);
+		std::unique_lock<std::mutex> CPULock(interptLock); // 将当前CPU上正在运行的进程全部暂停
+
+
+		while (!breakList->BreakQue.empty())
+		{
+			this->BreakWork(breakList->BreakQue[0].first);
+			breakList->BreakQue.erase(breakList->BreakQue.begin());
+		}
+		(breakList->repo_not_full).notify_all();
+		CPULock.unlock();
+		lock.unlock();
+	}
+}
+
+void CPUSimulate::BreakWork(int BreakType)
+{
+	switch (BreakType)
+	{
+		case 1:printf("计算机正在执行打印机中断...");
+			break;
+		case 2:printf("计算机正在执行键盘中断...");
+			break;
+		case 3:printf("计算机正在执行磁盘中断...");
+			break;
+		default:break;
+	}
 }
 
 

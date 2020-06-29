@@ -133,6 +133,16 @@ ItemRepository seekEquipList;  // 设备阻塞队列
 ItemRepository getEquipList;  // 获得设备队列
 
 
+typedef struct BreakRepository
+{
+	vector<pair<int, int>>BreakQue; // 中断队列,pair的格式为：中断类型，中断的进程PID
+	std::mutex BreakLock; // 互斥锁
+	std::condition_variable repo_not_full; // 条件变量, 指示产品缓冲区不为满.
+	std::condition_variable repo_not_empty; // 条件变量, 指示产品缓冲区不为空.
+};
+BreakRepository breakList;
+
+
 class CPUSimulate //模拟CPU运行
 {
 public:
@@ -169,6 +179,9 @@ public:
 	void run(); // 将调入的进程按照指令去顺序执行
 	void RUN_PROCESS(int pos); //执行RUNNING队列中pos位置的进程
 	void Insert(PCB process); // 采用插入排列的方式，将就绪队列中的进程按照优先级从高到低排序
+
+	void BreakWork(int BreadType); // 分为磁盘，打印机和键盘中断，根据输入的种类打印不同的内容
+	void BreakListen(BreakRepository *BreakList); // 监听中断信号队列
 };
 
 
