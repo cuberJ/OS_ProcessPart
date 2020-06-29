@@ -153,7 +153,7 @@ public:
 	vector<pair<int, PCB>>READY;  //就绪队列
 	vector<pair<int, PCB>>RUNNING; // 运行队列，其实每次只会有一个在运行，但这样方便调度
 	vector<int>used_pid;  // 记录已经使用过的pid
-	condition_variable Hearwait; //等待
+	condition_variable Hearwait; //就绪队列的等待，在没有任何进程可以使用的时候wait
 
 	
 	void SplitString(const string& s, vector<string>& v, const string& c);//分割字符串的函数
@@ -165,7 +165,7 @@ public:
 	int IF(int pos);  //取指函数,如果取得指令为为NULL,进入缺页中断阻塞，调用内存提供的接口加入阻塞队列
 	void CalTime(int time); // 供C指令调用的占用CPU函数
 	int ID(PCB process);  //分析指令
-	int Priority(PCB a, PCB b);  //比较两个进程的优先级，并对其进行调度
+	void Preemption();  //比较两个进程的优先级，并对其进行调度
 	void ProcessSchedule();  //进程调度，现在的设想是插入排序，在插入的时候直接对优先级进行比较排序
 
 	void interrupt(ItemRepository *ir);  //提供给外部设备以及内存的接口，输入中断的类型
@@ -178,7 +178,7 @@ public:
 	int findProcess(int PID, vector<pair<int, PCB>> processList);  // 在某个队列中找到PCB下标
 	void run(); // 将调入的进程按照指令去顺序执行
 	void RUN_PROCESS(int pos); //执行RUNNING队列中pos位置的进程
-	void Insert(PCB process); // 采用插入排列的方式，将就绪队列中的进程按照优先级从高到低排序
+	void Insert(PCB process); // 采用插入排列的方式，将就绪队列中的进程按照优先级从高到低排序,0号为优先级最高的
 
 	void BreakWork(int BreadType); // 分为磁盘，打印机和键盘中断，根据输入的种类打印不同的内容
 	void BreakListen(BreakRepository *BreakList); // 监听中断信号队列

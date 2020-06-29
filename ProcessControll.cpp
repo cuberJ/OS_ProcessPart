@@ -47,6 +47,7 @@ void CPUSimulate::initProcess(string filename) {  // 创建进程
 
 	std::unique_lock<std::mutex> ready(readyLock);
 	this->Insert(process);  // 加入就绪队列
+	this->Hearwait.notify_all();
 	ready.unlock();
 }
 
@@ -74,6 +75,7 @@ void CPUSimulate::resumeProcess(ItemRepository* ir) {  // 将阻塞进程放到�
 	}
 
 	(ir->repo_not_full).notify_all();
+	this->Hearwait.notify_all();
 	lock.unlock();
 
 }
@@ -279,7 +281,7 @@ void CPUSimulate::interrupt(ItemRepository *ir)
 
 	std::unique_lock<std::mutex> ready(readyLock);
 	this->resumeProcess(ir);
-	// -----------------------这里执行一次调度检查，判断是否有需要抢占RUNNING的进程，如果有，调入RUNNING------------------
+	
 
 	ready.unlock();
 	run.unlock();
@@ -313,13 +315,25 @@ void CPUSimulate::run() // 运行函数
 	while (true)
 	{
 
-		// ---------------------这里补充：调度模块向RUNNING中放入进程，注意处理一下这种情况：就绪队列和运行队列都是空的时候，需要等待---------------------------
+		//调度模块向RUNNING中放入进程，注意处理一下这种情况：就绪队列和运行队列都是空的时候，需要等待
+		std::unique_lock<std::mutex> lock(interptLock);
+		if (RUNNING.size() <= 0 && READY.size() <= 0) //没有任何可以运行或者就绪的进程
+		{
+			cout << ("就绪队列和运行队列都为空，卡兹停止了思考。。。") << endl;
+			this->Hearwait.wait(lock);
+		}
+		while (RUNNING.size() < 3 && READY.size() > 0)
+		{
+			this->ProcessSchedule();
+		}
+		lock.unlock();
 		
 		for (int i = 0;!RUNNING.empty() ; i = (i+1)%RUNNING.size())  // RUNNING队列中有最多三个进程，每个进程循环执行两个指令
 		{
 			std::unique_lock<std::mutex> lock(interptLock);
 			this->RUN_PROCESS(i);
-			// -----------------------------执行完一个进程的时间片后，检查就绪队列的优先级情况，判断是否需要调度-------------------------------
+			// 执行完一个进程的时间片后，检查就绪队列的优先级情况，判断是否需要调度
+			this->Preemption();
 			lock.unlock();
 		}
 	}
@@ -334,10 +348,11 @@ void CPUSimulate::RUN_PROCESS(int pos)
 			int code = this->ID(this->RUNNING[pos].second);
 			if (code != 0) // 如果这次执行的是一个会引起调度的指令
 			{
-				// 由于会产生调度，所以当前的Running进程会被换出
+				// 由于会产生调度，所以当前的Running进程会被换出,此时这里RUNNING队列中已经有了一个空位
 				RUNNING[pos].second.priority += 1;
 				std::unique_lock<std::mutex> lock(readyLock);
-				// -------------------------------这里采用优先级方式选择下一个需要处理的进程，换入RUNNING队列---------------------------
+				//这里采用优先级方式选择下一个需要处理的进程，换入RUNNING队列
+				this->ProcessSchedule();
 				readyLock.unlock();
 				return;
 			}
@@ -346,7 +361,7 @@ void CPUSimulate::RUN_PROCESS(int pos)
 		else  // 取指不成功，此时RUNNING[i]进程已经被调走，需要通过调度模块向RUNNING中加入一个新的进程
 		{
 			std::unique_lock<std::mutex> lock(readyLock);
-			// ------------------------------------这里同样用调度模块加入新的进程-----------------------------------
+			this->ProcessSchedule();
 			readyLock.unlock();
 			cout << "加入新的进程" << endl;
 			return;
@@ -392,16 +407,47 @@ void CPUSimulate::BreakWork(int BreakType)
 {
 	switch (BreakType)
 	{
-		case 1:printf("计算机正在执行打印机中断...");
+		case 1:cout<<"计算机正在执行打印机中断..."<<endl;
 			break;
-		case 2:printf("计算机正在执行键盘中断...");
+		case 2:cout<<"计算机正在执行键盘中断..."<<endl;
 			break;
-		case 3:printf("计算机正在执行磁盘中断...");
+		case 3:cout<<"计算机正在执行磁盘中断..."<<endl;
 			break;
 		default:break;
 	}
 }
 
+void CPUSimulate::ProcessSchedule()
+{
+	if (this->READY.empty()) // 就绪队列为空，没有可以调度的进程了
+	{
+		cout << "就绪队列为空..." << endl;;
+	}
+	else
+	{
+		this->RUNNING.push_back(this->READY[0]);
+		this->READY.erase(this->READY.begin());
+		cout<<"调换成功"<<endl;
+	}
+}
+
+void CPUSimulate::Preemption()
+{
+	std::unique_lock<std::mutex>ready(readyLock);
+	for (int i = 0; i < RUNNING.size(); i++)
+	{
+		if (READY[0].second.priority <= RUNNING[i].second.priority) //就绪队列中最大的优先级也小于这个正在运行的进程，说明肯定不用调换
+			continue;
+		else
+		{
+			this->Insert(RUNNING[i].second);
+			RUNNING.erase(RUNNING.begin() + i);
+			this->ProcessSchedule();
+			cout << "发生了一次优先级造成的抢占" << endl;
+		}
+	}
+	ready.unlock();
+}
 
 int main(void) {
 	cout << "hello world!" << endl;
