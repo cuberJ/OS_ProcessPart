@@ -14,9 +14,6 @@ PCB::PCB(int PID, int priority, int pageNo)
 }
 
 
-PCB::PCB(void){}
-
-
 int CPUSimulate::findProcess(int PID, vector<pair<int, PCB>> processList) { // 输入PID，返回这个进程在进程队列中的位置
 	for (int i = 0; i < processList.size(); i++) {
 		if (processList[i].first == PID) {

@@ -113,7 +113,7 @@ public:
 
 	DemandInfo di;  // 申请设备时需要的信息
 	int MemDemand;  // 申请内存的大小
-
+	string cwd;
 
 	PCB(int PID, int priority, int pageNo);
 	PCB(void);
